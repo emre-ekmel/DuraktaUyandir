@@ -271,7 +271,9 @@ void onStart(ServiceInstance service) async {
         FlutterLocalNotificationsPlugin();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        // Monochrome status-bar silhouette (audit 2026-08-20 task 6) — the
+        // full-color launcher icon renders as an opaque blob in the tray.
+        AndroidInitializationSettings('@drawable/ic_notification');
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
@@ -1181,7 +1183,8 @@ class BackgroundLocationService {
         FlutterLocalNotificationsPlugin();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        // Monochrome status-bar silhouette (audit 2026-08-20 task 6).
+        AndroidInitializationSettings('@drawable/ic_notification');
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
