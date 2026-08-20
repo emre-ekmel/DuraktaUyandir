@@ -1,10 +1,14 @@
+import 'package:durakta_uyandir/core/services/background_service.dart';
+import 'package:durakta_uyandir/presentation/bloc/alarm_bloc.dart';
 import 'package:durakta_uyandir/presentation/cubit/settings_cubit.dart';
 import 'package:durakta_uyandir/presentation/pages/add_alarm_page.dart';
+import 'package:durakta_uyandir/presentation/pages/alarm_ring_page.dart';
 import 'package:durakta_uyandir/presentation/pages/home_page.dart';
 import 'package:durakta_uyandir/presentation/pages/settings_page.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class MainPage extends StatefulWidget {
@@ -17,7 +21,7 @@ class MainPage extends StatefulWidget {
   State<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage> {
+class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
   void switchTab(int index) {
@@ -31,8 +35,53 @@ class _MainPageState extends State<MainPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkPermissions();
     _checkAnalyticsConsent();
+    _wireRingUiLaunchPath();
+  }
+
+  /// Wire the full-screen Ring UI launch paths:
+  ///  - WARM: FSI launch / notification body tap while the app is alive, via
+  ///    the foreground FLN response hook.
+  ///  - COLD: app launched by the notification (checked once at startup via
+  ///    getNotificationAppLaunchDetails).
+  void _wireRingUiLaunchPath() {
+    AlarmRingNavigator.contextProvider = () =>
+        MainPage.globalKey.currentContext;
+    BackgroundLocationService.ringUiRequestedCallback =
+        (payload) => AlarmRingNavigator.maybeOpenForPayload(payload, null);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final details = await FlutterLocalNotificationsPlugin()
+            .getNotificationAppLaunchDetails();
+        if (details != null && details.didNotificationLaunchApp) {
+          AlarmRingNavigator.maybeOpenForPayload(
+            details.notificationResponse?.payload,
+            null,
+          );
+        }
+      } catch (_) {
+        // Ring UI launch-path is best-effort; the notification actions work
+        // regardless.
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Re-check permission + service state when the user returns from
+      // OS settings or another app. This clears the permission banner
+      // automatically once the user grants background location.
+      context.read<AlarmBloc>().add(LoadAlarms());
+    }
   }
 
   Future<void> _checkAnalyticsConsent() async {

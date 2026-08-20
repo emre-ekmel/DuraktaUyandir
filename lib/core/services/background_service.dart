@@ -37,7 +37,7 @@ Timer? _ringReplayTimer;
 const Duration _kRingReplayGap = Duration(seconds: 5);
 
 @pragma('vm:entry-point')
-void notificationTapBackground(NotificationResponse notificationResponse) async {
+Future<void> notificationTapBackground(NotificationResponse notificationResponse) async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
     DartPluginRegistrant.ensureInitialized();
@@ -1096,16 +1096,22 @@ Future<void> _triggerAlarm(
     }
   }
 
-  if (_isNotificationEnabled) {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
-      'alarm_channel',
-      'ALARM CHANNEL',
-      channelDescription: 'Channel for alarm notifications',
-      importance: Importance.max,
-      priority: Priority.high,
-      fullScreenIntent: true,
-      playSound: false,
-      enableVibration: false,
+    if (_isNotificationEnabled) {
+      const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
+        'alarm_channel',
+        'ALARM CHANNEL',
+        channelDescription: 'Channel for alarm notifications',
+        importance: Importance.max,
+        priority: Priority.high,
+        // Alarm semantics: CATEGORY_ALARM is what the OS uses to route
+        // full-screen intents on API 31+; public content so it reads fully
+        // on the lock screen; ongoing so the ring can't be swiped away.
+        category: AndroidNotificationCategory.alarm,
+        visibility: NotificationVisibility.public,
+        ongoing: true,
+        fullScreenIntent: true,
+        playSound: false,
+        enableVibration: false,
       actions: <AndroidNotificationAction>[
         // SUSTUR: silence this visit (MUTED); re-arms on exit boundary.
         AndroidNotificationAction(
@@ -1157,6 +1163,12 @@ Future<void> _triggerAlarm(
 class BackgroundLocationService {
   static final FlutterBackgroundService _service = FlutterBackgroundService();
 
+  /// Presentation hook (set by MainPage) invoked when the FOREGROUND
+  /// notification response is a body tap / full-screen-intent launch carrying
+  /// an alarm payload — i.e. "open the full-screen Ring UI". Registered here
+  /// (core) to keep the service free of presentation imports.
+  static void Function(String? payload)? ringUiRequestedCallback;
+
   static Future<void> initializeService() async {
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'my_foreground',
@@ -1181,7 +1193,16 @@ class BackgroundLocationService {
       // same handler here so no delivery path lands on a null callback.
       // The handler is idempotent (contains-check on the prefs queue),
       // and the service isolate has its own richer handler for the live path.
-      onDidReceiveNotificationResponse: notificationTapBackground,
+      onDidReceiveNotificationResponse: (response) {
+        // Body tap / FSI launch carrying a payload → presentation hook for
+        // the full-screen Ring UI (actions never navigate).
+        if (response.notificationResponseType ==
+                NotificationResponseType.selectedNotification &&
+            response.payload != null) {
+          ringUiRequestedCallback?.call(response.payload);
+        }
+        notificationTapBackground(response);
+      },
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
 

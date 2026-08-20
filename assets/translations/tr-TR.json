@@ -13,7 +13,15 @@
         "time_min": "dk",
         "time_hour": "sa",
         "yes": "Evet",
-        "no": "Hayır"
+        "no": "Hayır",
+        "day_1": "Pzt",
+        "day_2": "Sal",
+        "day_3": "Çar",
+        "day_4": "Per",
+        "day_5": "Cum",
+        "day_6": "Cmt",
+        "day_7": "Paz",
+        "every_day": "Her gün"
     },
     "home": {
         "no_alarms": "Henüz alarm eklenmedi",
@@ -24,7 +32,9 @@
         "distance_away": "{}m uzaklıkta",
         "active": "Aktif",
         "passive": "Pasif",
-        "delete_confirm": "Alarmı silmek istediğinize emin misiniz?"
+        "delete_confirm": "Alarmı silmek istediğinize emin misiniz?",
+        "outside_schedule": "Zamanlama dışında: {}",
+        "muted_state": "Susturuldu — alandan çıkınca tekrar aktif olacak"
     },
     "add_alarm": {
         "title": "Yeni Alarm Ekle",
@@ -42,7 +52,14 @@
         "no_result": "Sonuç bulunamadı.",
         "save_alarm": "Alarmı Kaydet",
         "tap_map_hint": "Hedefinizi seçmek için haritaya dokunun",
-        "distance_label": "Mesafe"
+        "distance_label": "Mesafe",
+        "schedule": "Zamanlama",
+        "schedule_subtitle": "Sadece seçilen gün ve saatlerde aktif",
+        "days_label": "Günler",
+        "start_time": "Başlangıç",
+        "end_time": "Bitiş",
+        "days_required": "En az bir gün seçin",
+        "invalid_time_range": "Bitiş saati başlangıçtan sonra olmalı"
     },
     "settings": {
         "title": "Ayarlar",
@@ -61,8 +78,8 @@
         "headphone_desc": "Kulaklık takılıysa sadece kulaklığa ses ver",
         "headphone_warn": "Bu özelliği açmak için önce alarm sesini açmalısınız.",
         "analytics": "Anonim İstatistik Gönder",
-        "analytics_desc": "Hataları çözmemize yardımcı olmak için anonim kullanım verisi gönderin",
-        "analytics_consent_desc": "Uygulamayı geliştirebilmemiz için tamamen anonim kullanım istatistikleri göndermeyi kabul eder misiniz? Bu kararı daha sonra Ayarlar menüsünden değiştirebilirsiniz.",
+        "analytics_desc": "Uygulama kullanım sayısını ölçebilmemiz için tamamen anonim veri gönderin",
+        "analytics_consent_desc": "Uygulamanın ne kadar kullanıldığını sayabilmemiz için tamamen anonim istatistik göndermeyi kabul eder misiniz? (Kişisel veri veya hata logu içermez). Bu kararı daha sonra Ayarlar menüsünden değiştirebilirsiniz.",
         "battery_saver": "Pil Tasarrufu Modu",
         "battery_saver_desc": "Konum daha az sık güncellenir (önerilir)",
         "other": "Diğer",
@@ -85,6 +102,7 @@
         "feedback_no_category": "Lütfen bir kategori seçin.",
         "feedback_open_failed": "Sayfa açılamadı. Lütfen tekrar deneyin.",
         "feedback_send_failed": "Gönderilemedi. İnternet bağlantınızı kontrol edin.",
+        "feedback_service_unavailable": "Şu anda gönderilemedi — sunucu isteği reddetti. Lütfen daha sonra tekrar deneyin.",
         "feedback_success": "Geri bildiriminiz başarıyla gönderildi. Teşekkürler!",
         "feedback_webhook_unavailable": "Doğrudan gönderim bu sürümde aktif değil. GitHub üzerinden bildirebilirsiniz.",
         "feedback_rate_limit": "Çok fazla istek gönderdiniz. Lütfen daha sonra tekrar deneyin.",
@@ -98,7 +116,15 @@
     "permissions": {
         "background_title": "Arka Plan Konum İzni",
         "background_desc": "Alarmın cebinizde veya kilitli ekranda çalışabilmesi için konum iznini 'Her Zaman İzin Ver' olarak seçmeniz gerekmektedir.",
-        "later": "Daha Sonra"
+        "later": "Daha Sonra",
+        "location_banner": "Arka plan konum izni verilmedi. Alarmlar çalmayacak."
+    },
+    "ring": {
+        "title": "Durağa Yaklaştınız!",
+        "arrived": "{} konumuna vardınız.",
+        "stop": "KAPAT",
+        "mute": "SUSTUR",
+        "mute_hint": "Susturuldu — alandan çıkınca tekrar aktif olur"
     },
     "detail": {
         "title": "Alarm Detay",

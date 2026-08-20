@@ -13,7 +13,15 @@
             "time_min": "min",
             "time_hour": "h",
             "yes": "Yes",
-            "no": "No"
+            "no": "No",
+            "day_1": "Mon",
+            "day_2": "Tue",
+            "day_3": "Wed",
+            "day_4": "Thu",
+            "day_5": "Fri",
+            "day_6": "Sat",
+            "day_7": "Sun",
+            "every_day": "Every day"
         },
         "home": {
             "no_alarms": "No alarms added yet",
@@ -24,7 +32,9 @@
             "distance_away": "{}m away",
             "active": "Active",
             "passive": "Passive",
-            "delete_confirm": "Are you sure you want to delete this alarm?"
+            "delete_confirm": "Are you sure you want to delete this alarm?",
+            "outside_schedule": "Outside window: {}",
+            "muted_state": "Muted — will re-activate when you leave the area"
         },
         "add_alarm": {
             "title": "Add New Alarm",
@@ -42,7 +52,14 @@
             "no_result": "No results found.",
             "save_alarm": "Save Alarm",
             "tap_map_hint": "Tap on the map to select your destination",
-            "distance_label": "Distance"
+            "distance_label": "Distance",
+            "schedule": "Schedule",
+            "schedule_subtitle": "Only active on selected days and hours",
+            "days_label": "Days",
+            "start_time": "Start",
+            "end_time": "End",
+            "days_required": "Select at least one day",
+            "invalid_time_range": "End time must be after start time"
         },
         "settings": {
             "title": "Settings",
@@ -61,8 +78,8 @@
             "headphone_desc": "Only play sound if headphones are connected",
             "headphone_warn": "Enable sound first to use this setting.",
             "analytics": "Anonymous Statistics",
-            "analytics_desc": "Help us improve the app by sending anonymous usage data",
-            "analytics_consent_desc": "Would you like to help us improve the app by sending anonymous usage statistics? This can be changed later in settings.",
+            "analytics_desc": "Send completely anonymous data so we can count app usage",
+            "analytics_consent_desc": "Would you like to send completely anonymous statistics just so we can count how much the app is used? (Contains no personal data or crash logs). This can be changed later in settings.",
             "battery_saver": "Battery Saver Mode",
             "battery_saver_desc": "Updates location less frequently (recommended)",
             "other": "Other",
@@ -85,6 +102,7 @@
             "feedback_no_category": "Please select a category.",
             "feedback_open_failed": "Could not open page. Please try again.",
             "feedback_send_failed": "Could not send. Please check your internet connection.",
+            "feedback_service_unavailable": "Could not send right now — the server rejected the request. Please try again later.",
             "feedback_success": "Your feedback has been sent successfully. Thank you!",
             "feedback_webhook_unavailable": "Direct sending is not available in this build. You can report via GitHub.",
             "feedback_rate_limit": "You have sent too many requests. Please try again later.",
@@ -98,7 +116,15 @@
         "permissions": {
             "background_title": "Background Location Permission",
             "background_desc": "For the alarm to work in your pocket or on lock screen, you must select 'Allow all the time' for location permission.",
-            "later": "Later"
+            "later": "Later",
+            "location_banner": "Background location permission not granted. Alarms will not ring."
+        },
+        "ring": {
+            "title": "You Have Arrived!",
+            "arrived": "You have arrived at {}.",
+            "stop": "STOP",
+            "mute": "MUTE",
+            "mute_hint": "Muted — re-arms when you leave the area"
         },
         "detail": {
             "title": "Alarm Detail",
