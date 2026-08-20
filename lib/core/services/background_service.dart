@@ -110,8 +110,18 @@ final Set<String> _mutedAlarmIds = {};
 /// left the alarm ACTIVE and it could re-ring after the cooldown.)
 const Duration _kRingCeilingDuration = Duration(minutes: 2);
 
-Timer? _ringCeilingTimer;
-String? _ringCeilingAlarmId;
+/// Monotonic clock for ring bookkeeping (audit fix-round task 7). Stopwatch
+/// elapsed time is NOT wall-clock — it survives date/time adjustments
+/// mid-ring. Lives for the isolate's lifetime.
+final Stopwatch _ringClock = Stopwatch()..start();
+
+/// Per-alarm ABSOLUTE ring-start ticks (in [_ringClock] elapsed ms). Set ONCE
+/// per ring cycle on first trigger and never re-armed by re-triggers — this
+/// is what makes the ceiling truly an absolute deadline: previously the
+/// 1-minute re-trigger cooldown pushed the 2-minute ceiling into the future
+/// forever while the user stayed in radius. Removed when the ring is torn
+/// down (KAPAT/SUSTUR/ceiling-expiry).
+final Map<String, int> _ringStartTicks = {};
 
 /// True while a ring cycle is live anywhere in the isolate. The engine's
 /// idle-stop path (audit fix-round task 4) must never tear the service down
@@ -344,9 +354,6 @@ void onStart(ServiceInstance service) async {
     /// vibration. Does NOT touch alarm state — callers decide OFF vs MUTED.
     Future<void> cleanupRing(String reason) async {
       // Timers/listeners first so nothing can schedule work after stop().
-      _ringCeilingTimer?.cancel();
-      _ringCeilingTimer = null;
-      _ringCeilingAlarmId = null;
       _ringReplayTimer?.cancel();
       _ringReplayTimer = null;
       await _playerCompleteSubscription?.cancel();
@@ -405,6 +412,10 @@ void onStart(ServiceInstance service) async {
       if (_mutedAlarmIds.contains(id)) return; // idempotent
 
       _mutedAlarmIds.add(id);
+      // Ceiling bookkeeping: a muted alarm's ring is over by definition —
+      // consume its absolute-ceiling entry so the guard never fires a
+      // second, pointless expiry for it later.
+      _ringStartTicks.remove(id);
       // Cooldown state is irrelevant for muted alarms (they are skipped
       // structurally); drop it so a later re-arm starts with a clean slate.
       _lastTriggerTimes.remove(id);
@@ -439,9 +450,35 @@ void onStart(ServiceInstance service) async {
     // Ring-ceiling hook: top-level trigger code → isolate-local mute logic.
     onRingCeilingElapsed = (alarmId) async {
       debugPrint("[BG Service][MUTE] Ring ceiling elapsed for $alarmId.");
+      _ringStartTicks.remove(alarmId);
       await applyMuteAlarm(alarmId, 'ring ceiling');
       await cleanupRing('ring ceiling');
     };
+
+    // Absolute ring-ceiling guard (audit fix-round task 7): polls the
+    // per-alarm ring-start ticks against the monotonic clock. Re-triggers can
+    // no longer defer the ceiling into the future; the first ring of a cycle
+    // starts the countdown and it fires exactly _kRingCeilingDuration later.
+    bool ringCeilingGuardRunning = false;
+    Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (ringCeilingGuardRunning) return;
+      ringCeilingGuardRunning = true;
+      try {
+        final nowMs = _ringClock.elapsedMilliseconds;
+        final expired = <String>[];
+        _ringStartTicks.forEach((id, startMs) {
+          if (nowMs - startMs >= _kRingCeilingDuration.inMilliseconds) {
+            expired.add(id);
+          }
+        });
+        for (final id in expired) {
+          debugPrint('[BG Service][RING] Absolute ceiling expired for $id.');
+          onRingCeilingElapsed?.call(id);
+        }
+      } finally {
+        ringCeilingGuardRunning = false;
+      }
+    });
 
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
@@ -456,6 +493,7 @@ void onStart(ServiceInstance service) async {
             await cleanupRing('KAPAT (active notification)');
             await StoppedAlarmsQueue.record(alarmId);
             _lastTriggerTimes.remove(alarmId);
+            _ringStartTicks.remove(alarmId);
             _mutedAlarmIds.remove(alarmId);
 
             try {
@@ -500,6 +538,7 @@ void onStart(ServiceInstance service) async {
           if (alarm['id'] == id) {
             alarm['isActive'] = false;
             _lastTriggerTimes.remove(id);
+            _ringStartTicks.remove(id);
             _mutedAlarmIds.remove(id);
             debugPrint("[BG Service] Alarm $id disabled in memory.");
 
@@ -544,6 +583,7 @@ void onStart(ServiceInstance service) async {
             debugPrint("[BG Service] disableAlarmInDb invoke error: $e");
           }
         }
+        _ringStartTicks.clear();
         _mutedAlarmIds.clear();
       }
       emitMutedAlarmsChanged();
@@ -1150,14 +1190,14 @@ Future<void> _triggerAlarm(
     );
   }
 
-  // Ring-ceiling: if neither KAPAT nor SUSTUR is pressed within the ceiling,
-  // the ring auto-transitions this alarm to MUTED (not just "stops ringing").
-  _ringCeilingTimer?.cancel();
-  _ringCeilingAlarmId = alarm['id'] as String;
-  final ceilingId = _ringCeilingAlarmId!;
-  _ringCeilingTimer = Timer(_kRingCeilingDuration, () {
-    onRingCeilingElapsed?.call(ceilingId);
-  });
+  // Ring ceiling (audit fix-round task 7): if neither KAPAT nor SUSTUR is
+  // pressed within the ceiling, the ring auto-transitions this alarm to
+  // MUTED via the periodic guard in onStart. The base timestamp is recorded
+  // ONCE per ring cycle on the monotonic clock — re-triggers while the user
+  // stays in radius push NOTHING (previously each re-trigger re-armed the
+  // 2-minute Timer, making the ceiling unreachable).
+  final alarmId = alarm['id'] as String;
+  _ringStartTicks.putIfAbsent(alarmId, () => _ringClock.elapsedMilliseconds);
 
   debugPrint("[BG Service] Alarm sequence completed for ${alarm['name']}");
 }
