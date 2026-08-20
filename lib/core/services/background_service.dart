@@ -4,10 +4,11 @@ import 'dart:ui';
 
 import 'package:audio_session/audio_session.dart' hide AndroidAudioFocus, AVAudioSessionCategory;
 import 'package:audioplayers/audioplayers.dart';
+import 'package:durakta_uyandir/core/services/alarm_state_loader.dart';
+import 'package:durakta_uyandir/core/services/self_heal_service.dart';
 import 'package:durakta_uyandir/core/utils/location_utils.dart';
 import 'package:durakta_uyandir/core/utils/schedule_utils.dart';
 import 'package:durakta_uyandir/core/utils/stopped_alarms_queue.dart';
-import 'package:durakta_uyandir/data/datasources/alarm_local_data_source.dart';
 import 'package:durakta_uyandir/domain/entities/destination_alarm.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
@@ -15,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:vibration/vibration.dart';
 
@@ -733,36 +733,11 @@ void onStart(ServiceInstance service) async {
     // zero-alarm state until a human opened the app.
     //
     // The isolate now hydrates itself from the SAME durable store the UI
-    // writes to (Hive, AES-encrypted; tolerant read so one torn record cannot
-    // zero the engine) and then applies the exact same reconcile/eligibility
-    // path as a UI push. UI-invoked 'updateAlarms' remains an incremental
-    // sync on top, not the initialization path.
+    // writes to (via the shared [loadAlarmsFromHive] loader — encrypted Hive,
+    // tolerant per-record decode, StoppedAlarmsQueue reconcile) and applies
+    // the exact same converge path as a UI push. UI-invoked 'updateAlarms'
+    // remains an incremental sync on top, not the initialization path.
     // -----------------------------------------------------------------------
-
-    /// Reads durable alarm state and maps it to service-payload maps,
-    /// reconciling any still-pending notification stops (KAPAT pressed while
-    /// the app was dead) the same way the updateAlarms handler does.
-    Future<List<Map<String, dynamic>>> loadAlarmsFromHive() async {
-      await Hive.initFlutter();
-      final dataSource = AlarmLocalDataSourceImpl();
-      await dataSource.init();
-      final models = await dataSource.getAlarmsTolerant();
-      final payloads = models.map(destinationAlarmToServicePayload).toList();
-
-      try {
-        final stoppedAlarms = await StoppedAlarmsQueue.peek();
-        if (stoppedAlarms.isNotEmpty) {
-          for (final alarm in payloads) {
-            if (stoppedAlarms.contains(alarm['id'])) {
-              alarm['isActive'] = false;
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint("[BG Service] hydration reconcile error: $e");
-      }
-      return payloads;
-    }
 
     /// Single convergent path for "new alarm state arrived" — used by BOTH
     /// the UI-pushed 'updateAlarms' event and cold-start self-hydration.
@@ -797,6 +772,12 @@ void onStart(ServiceInstance service) async {
       emitMutedAlarmsChanged();
 
       debugPrint("[BG Service] Alarms updated ($reason). Count: ${monitoredAlarms.length}");
+
+      // Keep the self-heal scheduler in sync with engine state (Task B3 fix):
+      // precise window-open tick + watchdog chain re-arm. Replace-semantics, so
+      // every state change tightens the recovery net to the CURRENT truth — on
+      // BOTH branches below (eligible and idle).
+      await SelfHealScheduler.syncForAlarms(monitoredAlarms);
 
       // Eligibility includes the schedule window: a synced schedule takes
       // effect immediately instead of waiting up to 60 s for the timer.
@@ -1176,6 +1157,12 @@ class BackgroundLocationService {
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(alarmChannel);
+
+    // Self-heal net (Task B3 fix): alarmClock watchdog chain + WorkManager
+    // periodic backstop, both funneling into selfHealTick. Re-armed on every
+    // app start here; chained after each fire inside the tick itself.
+    await SelfHealScheduler.initialize();
+    await SelfHealScheduler.scheduleWatchdogTick();
 
     await _service.configure(
       androidConfiguration: AndroidConfiguration(

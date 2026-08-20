@@ -228,3 +228,42 @@ Map<String, dynamic> destinationAlarmToServicePayload(DestinationAlarm a) {
     'endTime': a.endTime,
   };
 }
+
+/// Earliest FUTURE schedule-window opening across all active scheduled alarms
+/// (service-payload maps). `null` when no scheduled alarm has any future
+/// boundary within the next 8 days — i.e. the engine need not wake for
+/// window-open at all. Unscheduled alarms contribute nothing (they are
+/// permanently "inside" their window by definition).
+///
+/// Drives the self-heal scheduler's precise window-open tick: the engine may
+/// sleep through closed windows (battery) yet still come alive exactly when a
+/// window opens.
+DateTime? nextScheduleWindowOpen(List<Map<String, dynamic>> alarms, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  DateTime? best;
+  for (final alarm in alarms) {
+    if (alarm['isActive'] != true) continue;
+    final isScheduled = alarm['isScheduled'] as bool? ?? false;
+    if (!isScheduled) continue;
+
+    final rawDays = alarm['scheduledDays'];
+    if (rawDays is! List || rawDays.isEmpty) continue;
+    final daySet = rawDays.map((e) => (e as num).toInt()).toSet();
+
+    final start = parseHHmm(alarm['startTime'] as String?);
+    final end = parseHHmm(alarm['endTime'] as String?);
+    if (start == null || end == null || start >= end) continue;
+
+    final startHour = start ~/ 60;
+    final startMinute = start % 60;
+    for (var offset = 0; offset < 8; offset++) {
+      final day = DateTime(n.year, n.month, n.day + offset);
+      if (!daySet.contains(day.weekday)) continue;
+      final boundary = DateTime(day.year, day.month, day.day, startHour, startMinute);
+      if (boundary.isAfter(n) && (best == null || boundary.isBefore(best))) {
+        best = boundary;
+      }
+    }
+  }
+  return best;
+}

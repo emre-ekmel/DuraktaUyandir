@@ -9,6 +9,14 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Exact-alarm special access for the self-heal watchdog chain
+         (setAlarmClock). Auto-granted at install on API 31-32; user-revocable
+         on 33+ via Settings > Special app access > Alarms & reminders —
+         WorkManager backstop covers that revocation. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Full-screen ringing alarm over the lock screen (Android 14+: user can
+         revoke in Special app access; notification actions remain the fallback). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:label="Durakta Uyandır"
@@ -47,6 +55,27 @@
         />
         
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+
+        <!-- The plugin's alarm-clock self-heal path (Task B3 fix).
+             The 4.0.8 pub.dev artifact ships an EMPTY manifest, so the three
+             components are declared here explicitly; pending alarms targeting
+             them are implicit-component PendingIntents and would otherwise
+             never fire. -->
+        <service
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.AlarmBroadcastReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="dev.fluttercommunity.plus.androidalarmmanager.RebootBroadcastReceiver"
+            android:enabled="false"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
         
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
