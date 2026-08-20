@@ -65,6 +65,23 @@ class AlarmLocalDataSourceImpl implements AlarmLocalDataSource {
     return box.values.map((e) => DestinationAlarmModel.fromJson(jsonDecode(e))).toList();
   }
 
+  /// Tolerant read: skips records that fail to decode instead of failing the
+  /// whole list. Exists for the background-service cold-start hydration path
+  /// (boot/respawn), where one torn record must not leave the engine with
+  /// zero alarms. The strict [getAlarms] contract is deliberately unchanged.
+  Future<List<DestinationAlarmModel>> getAlarmsTolerant() async {
+    final alarms = <DestinationAlarmModel>[];
+    for (final raw in box.values) {
+      try {
+        alarms.add(DestinationAlarmModel.fromJson(jsonDecode(raw)));
+      } catch (_) {
+        // Corrupt/torn record (e.g. process death mid-write): skip it; the
+        // remaining valid alarms must still drive tracking.
+      }
+    }
+    return alarms;
+  }
+
   @override
   Future<void> updateAlarmStatus(String id, bool isActive) async {
     final alarmJson = box.get(id);
