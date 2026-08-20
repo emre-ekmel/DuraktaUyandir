@@ -113,6 +113,11 @@ const Duration _kRingCeilingDuration = Duration(minutes: 2);
 Timer? _ringCeilingTimer;
 String? _ringCeilingAlarmId;
 
+/// True while a ring cycle is live anywhere in the isolate. The engine's
+/// idle-stop path (audit fix-round task 4) must never tear the service down
+/// mid-ring — sound/vibration/notification housekeeping is active work.
+bool _isRinging = false;
+
 /// Hook assigned in onStart() so top-level trigger code can route ceiling
 /// expiries into the isolate-local mute logic.
 void Function(String alarmId)? onRingCeilingElapsed;
@@ -359,6 +364,31 @@ void onStart(ServiceInstance service) async {
       } catch (e) {
         debugPrint("[BG Service] Ring cleanup: vibration cancel error ($reason): $e");
       }
+      // Single-level flag (one live ring at a time by design) — cleared on
+      // EVERY convergent teardown path so idle-stop is unlocked.
+      _isRinging = false;
+    }
+
+    /// Idle-stop (audit fix-round task 4): the foreground service (and with it
+    /// the isolate + native partial wake lock for the whole process) exists
+    /// ONLY while there is live work: an eligible alarm, an active stream, a
+    /// pending muted alarm awaiting its exit-boundary check, or an active
+    /// ring cycle. All future window-open wakeups are owned by the self-heal
+    /// scheduler's precise oneShot tick, not by an idle FGS.
+    Future<void> maybeStopIfIdle(String reason) async {
+      final bool ringing = _isRinging;
+      final bool eligible = hasScheduleEligibleAlarm();
+      final bool streaming = streamSubscription != null;
+      final bool hasMuted = _mutedAlarmIds.isNotEmpty;
+      debugPrint(
+        '[BG Service][LIFETIME] maybeStopIfIdle($reason): '
+        'ringing=$ringing eligible=$eligible streaming=$streaming muted=$hasMuted',
+      );
+      if (ringing || eligible || streaming || hasMuted) return;
+      debugPrint('[BG Service][LIFETIME] No live work — stopping service.');
+      if (service is AndroidServiceInstance) {
+        service.stopSelf();
+      }
     }
 
     /// ACTIVE → MUTED. In-memory only (see [_mutedAlarmIds] rationale).
@@ -445,6 +475,7 @@ void onStart(ServiceInstance service) async {
             final bool hasScheduleEligibleAlarmNow = hasScheduleEligibleAlarm();
             if (!hasScheduleEligibleAlarmNow) {
               await _stopStream('stopped from active notification');
+              await maybeStopIfIdle('stopped from active notification');
             }
 
           case 'mute_alarm_action':
@@ -518,6 +549,7 @@ void onStart(ServiceInstance service) async {
       final bool hasScheduleEligibleAlarmNow = hasScheduleEligibleAlarm();
       if (!hasScheduleEligibleAlarmNow) {
         await _stopStream('stopped from notification handler');
+        await maybeStopIfIdle('stopped from notification handler');
       }
     });
 
@@ -789,6 +821,7 @@ void onStart(ServiceInstance service) async {
         // state is no stream at all; the schedule timer re-arms tracking
         // when a window opens.
         await _stopStream('no schedule-eligible alarms ($reason)');
+        await maybeStopIfIdle('no schedule-eligible alarms ($reason)');
         return;
       }
 
@@ -868,6 +901,12 @@ void onStart(ServiceInstance service) async {
         } else if (!nowEligible && streaming) {
           debugPrint('[BG Service][SCHEDULE] Window closed — stopping tracking.');
           await _stopStream('schedule window closed');
+          await maybeStopIfIdle('schedule window closed');
+        } else if (!nowEligible && !streaming) {
+          // No live work since the last tick (e.g. last muted alarm re-armed
+          // false post-ceiling, or a KAPAT'd last alarm). The self-heal
+          // window-open tick owns the next wake; don't idle-run the FGS.
+          await maybeStopIfIdle('engine tick: no eligible work');
         }
 
         // (c) Muted presence check — Nth tick, one-shot, only without a stream.
@@ -954,6 +993,11 @@ Future<void> _triggerAlarm(
   Map<String, dynamic> alarm,
   FlutterLocalNotificationsPlugin notificationPlugin,
 ) async {
+  // Mark BEFORE sound/notification setup: any teardown path below routes
+  // through cleanupRing(), which clears this; the idle-stop guard must see
+  // the ring as live for the whole cycle regardless of setup failures.
+  _isRinging = true;
+
   if (_isSoundEnabled) {
     bool playOnMediaChannel = false;
 
